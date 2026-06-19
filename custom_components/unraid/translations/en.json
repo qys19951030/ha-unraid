@@ -65,11 +65,13 @@
         "description": "Configure integration behaviour and UPS power settings.",
         "data": {
           "enable_container_updates": "Enable container update sensors",
+          "enable_temperature_sensors": "Enable system temperature sensors",
           "ups_capacity_va": "UPS capacity (VA)",
           "ups_nominal_power": "UPS nominal power (W)"
         },
         "data_description": {
           "enable_container_updates": "When enabled, creates an update entity for each Docker container to track available image updates. Disable if you manage container updates externally or don't need update notifications.",
+          "enable_temperature_sensors": "When enabled, polls motherboard, chipset, and ambient temperature sensors via the Unraid system metrics API. WARNING: This query reads SMART data from all disks and may wake sleeping or spun-down disks. Leave disabled unless you specifically need these temperature readings.",
           "ups_capacity_va": "Optional. Your UPS VA rating (e.g., 1000 for a 1000VA UPS). Shown in sensor attributes for reference.",
           "ups_nominal_power": "Required for UPS Power sensor. Enter the Watts value from your UPS specs. If Unraid only shows VA, check your UPS label or estimate using VA × 0.6."
         }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -7565,3 +7566,69 @@ async def test_asyncsetupentry_temperature_sensors_filter_bogus_channels(
 async def test_default_enable_temperature_sensors_is_false() -> None:
     """Verify the default value for the temperature sensor option is False."""
     assert DEFAULT_ENABLE_TEMPERATURE_SENSORS is False
+
+
+def test_enable_temperature_sensors_translation_keys_exist_in_strings_json() -> None:
+    """Verify strings.json contains data and data_description for the option."""
+    import json
+
+    from custom_components.unraid.const import CONF_ENABLE_TEMPERATURE_SENSORS
+
+    strings_path = (
+        Path(__file__).resolve().parent.parent
+        / "custom_components"
+        / "unraid"
+        / "strings.json"
+    )
+    with strings_path.open(encoding="utf-8") as f:
+        strings = json.load(f)
+
+    options_data = strings["options"]["step"]["init"]["data"]
+    options_desc = strings["options"]["step"]["init"]["data_description"]
+    assert CONF_ENABLE_TEMPERATURE_SENSORS in options_data
+    assert CONF_ENABLE_TEMPERATURE_SENSORS in options_desc
+    assert "SMART" in options_desc[CONF_ENABLE_TEMPERATURE_SENSORS]
+
+
+def test_enable_temperature_sensors_translation_keys_exist_in_en_json() -> None:
+    """Verify translations/en.json contains data and data_description for the option."""
+    import json
+
+    from custom_components.unraid.const import CONF_ENABLE_TEMPERATURE_SENSORS
+
+    en_path = (
+        Path(__file__).resolve().parent.parent
+        / "custom_components"
+        / "unraid"
+        / "translations"
+        / "en.json"
+    )
+    with en_path.open(encoding="utf-8") as f:
+        en = json.load(f)
+
+    options_data = en["options"]["step"]["init"]["data"]
+    options_desc = en["options"]["step"]["init"]["data_description"]
+    assert CONF_ENABLE_TEMPERATURE_SENSORS in options_data
+    assert CONF_ENABLE_TEMPERATURE_SENSORS in options_desc
+    assert "SMART" in options_desc[CONF_ENABLE_TEMPERATURE_SENSORS]
+
+
+def test_enable_temperature_sensors_translations_match_strings_json() -> None:
+    """Verify translations/en.json matches strings.json for the temp sensor keys."""
+    import json
+
+    from custom_components.unraid.const import CONF_ENABLE_TEMPERATURE_SENSORS
+
+    base = Path(__file__).resolve().parent.parent / "custom_components" / "unraid"
+    key = CONF_ENABLE_TEMPERATURE_SENSORS
+
+    with (base / "strings.json").open(encoding="utf-8") as f:
+        strings = json.load(f)
+    with (base / "translations" / "en.json").open(encoding="utf-8") as f:
+        en = json.load(f)
+
+    init = strings["options"]["step"]["init"]
+    en_init = en["options"]["step"]["init"]
+
+    assert init["data"][key] == en_init["data"][key]
+    assert init["data_description"][key] == en_init["data_description"][key]
