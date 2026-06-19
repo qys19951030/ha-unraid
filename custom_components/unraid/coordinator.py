@@ -51,6 +51,8 @@ from unraid_api.models import (
 )
 
 from .const import (
+    CONF_ENABLE_TEMPERATURE_SENSORS,
+    DEFAULT_ENABLE_TEMPERATURE_SENSORS,
     DOCKER_POLL_INTERVAL,
     DOMAIN,
     INFRA_POLL_INTERVAL,
@@ -179,6 +181,7 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         self._previously_unavailable = False
         # Static server info captured at setup; never re-queried on the hot path.
         self._server_info = server_info
+        self._config_entry = config_entry
         # Docker container list is polled at DOCKER_POLL_INTERVAL rather than on
         # every system poll. Between fetches the last result is reused so docker
         # entities stay populated. async_request_docker_refresh() forces an
@@ -197,6 +200,14 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         self._seen_notification_ids: set[str] = set()
         self._seen_ids_loaded = False
         self._notification_ids_baselined = False
+
+    @property
+    def _enable_temperature_sensors(self) -> bool:
+        """Return whether temperature sensor polling is enabled."""
+        return self._config_entry.options.get(
+            CONF_ENABLE_TEMPERATURE_SENSORS,
+            DEFAULT_ENABLE_TEMPERATURE_SENSORS,
+        )
 
     def async_add_event_listener(
         self,
@@ -670,13 +681,19 @@ class UnraidSystemCoordinator(TimestampDataUpdateCoordinator[UnraidSystemData]):
         _LOGGER.debug("Starting system data update")
         try:
             # Phase 1: Required calls — run concurrently; any failure raises immediately
-            # NOTE: We use get_system_metrics_safe() instead of
-            # get_system_metrics() to avoid querying metrics.temperature.sensors
-            # which triggers smartctl disk reads and wakes sleeping disks.
+            # Choose metrics API based on temperature sensor option:
+            # - Disabled (default): get_system_metrics_safe() — no temperature query,
+            #   avoids smartctl disk reads that would wake sleeping disks.
+            # - Enabled: get_system_metrics() — includes metrics.temperature.sensors
+            #   for motherboard/chipset/ambient temperature entities.
             # Server info is static and captured once at setup, so it is not
             # re-queried here.
+            if self._enable_temperature_sensors:
+                metrics_call = self.api_client.get_system_metrics()
+            else:
+                metrics_call = self.api_client.get_system_metrics_safe()
             metrics, notifications = await asyncio.gather(
-                self.api_client.get_system_metrics_safe(),
+                metrics_call,
                 self.api_client.get_notification_overview(),
             )
             info = self._server_info

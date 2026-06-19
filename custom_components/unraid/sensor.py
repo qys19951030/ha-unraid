@@ -26,8 +26,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from unraid_api import format_bytes
 
 from .const import (
+    CONF_ENABLE_TEMPERATURE_SENSORS,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
+    DEFAULT_ENABLE_TEMPERATURE_SENSORS,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
 )
@@ -3332,7 +3334,13 @@ async def async_setup_entry(
     )
 
     # System temperature sensors (dynamic, per hardware sensor)
-    if (
+    # Only created when:
+    # 1. The enable_temperature_sensors option is turned on (default off)
+    # 2. Coordinator data contains valid temperature sensor readings
+    enable_temp_sensors = entry.options.get(
+        CONF_ENABLE_TEMPERATURE_SENSORS, DEFAULT_ENABLE_TEMPERATURE_SENSORS
+    )
+    if enable_temp_sensors and (
         system_coordinator.data
         and system_coordinator.data.metrics.temperature is not None
     ):

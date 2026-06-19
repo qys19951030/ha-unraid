@@ -24,10 +24,12 @@ from unraid_api.exceptions import (
 
 from .const import (
     CONF_ENABLE_CONTAINER_UPDATES,
+    CONF_ENABLE_TEMPERATURE_SENSORS,
     CONF_IGNORE_SSL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
     DEFAULT_ENABLE_CONTAINER_UPDATES,
+    DEFAULT_ENABLE_TEMPERATURE_SENSORS,
     DEFAULT_PORT,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
@@ -139,6 +141,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         ),
                         CONF_UPS_CAPACITY_VA: DEFAULT_UPS_CAPACITY_VA,
                         CONF_UPS_NOMINAL_POWER: DEFAULT_UPS_NOMINAL_POWER,
+                        CONF_ENABLE_TEMPERATURE_SENSORS: (
+                            DEFAULT_ENABLE_TEMPERATURE_SENSORS
+                        ),
                     },
                 )
 
@@ -518,6 +523,15 @@ class UnraidOptionsFlowHandler(OptionsFlowWithReload):
                 CONF_ENABLE_CONTAINER_UPDATES,
                 default=options.get(
                     CONF_ENABLE_CONTAINER_UPDATES, DEFAULT_ENABLE_CONTAINER_UPDATES
+                ),
+            )
+        ] = bool
+        schema_dict[
+            vol.Optional(
+                CONF_ENABLE_TEMPERATURE_SENSORS,
+                default=options.get(
+                    CONF_ENABLE_TEMPERATURE_SENSORS,
+                    DEFAULT_ENABLE_TEMPERATURE_SENSORS,
                 ),
             )
         ] = bool

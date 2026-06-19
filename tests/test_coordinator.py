@@ -31,7 +31,10 @@ from unraid_api.models import (
     VmDomain,
 )
 
-from custom_components.unraid.const import DOCKER_POLL_INTERVAL
+from custom_components.unraid.const import (
+    CONF_ENABLE_TEMPERATURE_SENSORS,
+    DOCKER_POLL_INTERVAL,
+)
 from custom_components.unraid.coordinator import (
     UnraidInfraCoordinator,
     UnraidStorageCoordinator,
@@ -165,6 +168,7 @@ def mock_api_client():
     client = MagicMock()
     # All methods that the coordinator uses are async
     client.get_server_info = AsyncMock(return_value=make_server_info())
+    client.get_system_metrics = AsyncMock(return_value=make_system_metrics())
     client.get_system_metrics_safe = AsyncMock(return_value=make_system_metrics())
     client.get_notification_overview = AsyncMock(
         return_value=make_notification_overview()
@@ -2685,3 +2689,87 @@ async def test_infra_update_connection_error_raises_update_failed(
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+# =============================================================================
+# Temperature Sensor Coordinator Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_uses_safe_metrics_when_temperature_disabled(
+    hass, mock_api_client, mock_config_entry
+):
+    """When temp sensors disabled (default), get_system_metrics_safe is used."""
+    mock_config_entry.options = {CONF_ENABLE_TEMPERATURE_SENSORS: False}
+
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    await coordinator._async_update_data()
+
+    mock_api_client.get_system_metrics_safe.assert_awaited_once()
+    mock_api_client.get_system_metrics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_uses_full_metrics_when_temperature_enabled(
+    hass, mock_api_client, mock_config_entry
+):
+    """When temperature sensors are enabled, get_system_metrics() is used instead."""
+    mock_config_entry.options = {CONF_ENABLE_TEMPERATURE_SENSORS: True}
+
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    await coordinator._async_update_data()
+
+    mock_api_client.get_system_metrics.assert_awaited_once()
+    mock_api_client.get_system_metrics_safe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_safe_metrics_default_without_option(
+    hass, mock_api_client, mock_config_entry
+):
+    """Without the option set (empty options dict), safe polling is the default."""
+    mock_config_entry.options = {}
+
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    await coordinator._async_update_data()
+
+    mock_api_client.get_system_metrics_safe.assert_awaited_once()
+    mock_api_client.get_system_metrics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_system_coordinator_full_metrics_receives_temperature_data(
+    hass, mock_api_client, mock_config_entry
+):
+    """When enabled, full metrics path lets temperature data reach coordinator."""
+    from unraid_api.models import (
+        CpuUsage,
+        MemoryUsage,
+        NetworkUsage,
+        SystemMetrics,
+        TemperatureReading,
+        TemperatureSensors,
+    )
+
+    mock_config_entry.options = {CONF_ENABLE_TEMPERATURE_SENSORS: True}
+
+    cpu_sensor = TemperatureReading(id="cpu", label="CPU", value=55.0)
+    mb_sensor = TemperatureReading(id="mb", label="Motherboard", value=42.0)
+    temp_sensors = TemperatureSensors(sensors=[cpu_sensor, mb_sensor])
+
+    full_metrics = SystemMetrics(
+        cpu=CpuUsage(usage=10.0),
+        memory=MemoryUsage(total=1024, used=512),
+        network=NetworkUsage(interfaces=[]),
+        temperature=temp_sensors,
+    )
+    mock_api_client.get_system_metrics = AsyncMock(return_value=full_metrics)
+
+    coordinator = _system_coordinator(hass, mock_api_client, mock_config_entry)
+    data = await coordinator._async_update_data()
+
+    assert data.metrics.temperature is not None
+    assert len(data.metrics.temperature.sensors) == 2
+    assert data.metrics.temperature.sensors[0].value == 55.0
+    assert data.metrics.temperature.sensors[1].value == 42.0

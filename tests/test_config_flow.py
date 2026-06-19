@@ -29,9 +29,11 @@ from custom_components.unraid.config_flow import (
 )
 from custom_components.unraid.const import (
     CONF_ENABLE_CONTAINER_UPDATES,
+    CONF_ENABLE_TEMPERATURE_SENSORS,
     CONF_IGNORE_SSL,
     CONF_UPS_CAPACITY_VA,
     CONF_UPS_NOMINAL_POWER,
+    DEFAULT_ENABLE_TEMPERATURE_SENSORS,
     DEFAULT_PORT,
     DEFAULT_UPS_CAPACITY_VA,
     DEFAULT_UPS_NOMINAL_POWER,
@@ -2292,3 +2294,107 @@ async def test_handle_generic_error_maps_http_auth_status(
     )
     with pytest.raises(InvalidAuthError):
         flow._handle_generic_error(err)
+
+
+# =============================================================================
+# Temperature Sensor Options Flow Tests
+# =============================================================================
+
+
+async def test_options_flow_shows_temperature_sensor_toggle(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test options flow shows the enable_temperature_sensors toggle."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    schema_key_names = [str(k) for k in result["data_schema"].schema]
+    assert CONF_ENABLE_TEMPERATURE_SENSORS in schema_key_names
+    assert CONF_ENABLE_CONTAINER_UPDATES in schema_key_names
+
+
+async def test_options_flow_temperature_sensor_defaults_to_disabled(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test the enable_temperature_sensors toggle defaults to False (disabled)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+        options={},
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    temp_marker = next(
+        k
+        for k in result["data_schema"].schema
+        if str(k) == CONF_ENABLE_TEMPERATURE_SENSORS
+    )
+    assert temp_marker.default() is DEFAULT_ENABLE_TEMPERATURE_SENSORS
+    assert temp_marker.default() is False
+
+
+async def test_options_flow_saves_temperature_sensor_toggle(
+    hass: HomeAssistant, mock_setup_entry: None
+) -> None:
+    """Test options flow saves the enable_temperature_sensors value."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="tower",
+        data={CONF_HOST: "unraid.local", CONF_API_KEY: "key"},
+        options={
+            CONF_ENABLE_TEMPERATURE_SENSORS: DEFAULT_ENABLE_TEMPERATURE_SENSORS,
+        },
+        unique_id="test-uuid",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_ENABLE_CONTAINER_UPDATES: True,
+            CONF_ENABLE_TEMPERATURE_SENSORS: True,
+        },
+    )
+
+    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_ENABLE_TEMPERATURE_SENSORS] is True
+    assert entry.options[CONF_ENABLE_CONTAINER_UPDATES] is True
+
+
+async def test_user_flow_creates_entry_with_temperature_sensors_default(
+    hass: HomeAssistant, mock_setup_entry: None, mock_api_client: MagicMock
+) -> None:
+    """Test new entries get the temp sensors option with default (False)."""
+    with patch(
+        "custom_components.unraid.config_flow.UnraidClient",
+        return_value=mock_api_client,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={"host": "unraid.local", "api_key": "valid-api-key"},
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    entry = result["result"]
+    assert (
+        entry.options[CONF_ENABLE_TEMPERATURE_SENSORS]
+        == DEFAULT_ENABLE_TEMPERATURE_SENSORS
+    )
+    assert entry.options[CONF_ENABLE_TEMPERATURE_SENSORS] is False

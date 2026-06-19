@@ -35,7 +35,11 @@ from unraid_api.models import (
     TemperatureSensor as TemperatureSensorModel,
 )
 
-from custom_components.unraid.const import DOMAIN
+from custom_components.unraid.const import (
+    CONF_ENABLE_TEMPERATURE_SENSORS,
+    DEFAULT_ENABLE_TEMPERATURE_SENSORS,
+    DOMAIN,
+)
 from custom_components.unraid.coordinator import (
     UnraidInfraCoordinator,
     UnraidStorageCoordinator,
@@ -7312,3 +7316,252 @@ def test_is_valid_system_temp_sensor_filters() -> None:
     assert _is_valid_system_temp_sensor(_make_temp_sensor(name="AUXTIN3")) is False
     assert _is_valid_system_temp_sensor(_make_temp_sensor(temperature=0.5)) is False
     assert _is_valid_system_temp_sensor(_make_temp_sensor(temperature=180.0)) is False
+
+
+# =============================================================================
+# Temperature Sensor Options Gating Tests
+# =============================================================================
+
+
+def _make_config_entry_with_temp_option(enabled: bool) -> MagicMock:
+    """Create a mock config entry with the temperature sensor option set."""
+    entry = MagicMock()
+    entry.options = {CONF_ENABLE_TEMPERATURE_SENSORS: enabled}
+    entry.data = {"host": "unraid.local", "api_key": "test-key"}
+    entry.runtime_data = MagicMock()
+    entry.runtime_data.server_info = {"uuid": "test-uuid", "hostname": "tower"}
+    return entry
+
+
+async def test_asyncsetupentry_no_system_temperature_sensors_when_option_disabled(
+    hass,
+) -> None:
+    """When option disabled (default), no system temperature entities created."""
+    from custom_components.unraid.sensor import async_setup_entry
+
+    temp_metrics = _make_temp_metrics(
+        sensors=[_make_temp_sensor("s1", "CPU"), _make_temp_sensor("s2", "MB")]
+    )
+    system_data = make_system_data(temperature=temp_metrics)
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = system_data
+    system_coordinator.last_update_success = True
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+    storage_coordinator.last_update_success = True
+
+    infra_coordinator = MagicMock(spec=UnraidInfraCoordinator)
+    infra_coordinator.data = MagicMock()
+    infra_coordinator.last_update_success = True
+
+    entry = _make_config_entry_with_temp_option(enabled=False)
+    entry.runtime_data.system_coordinator = system_coordinator
+    entry.runtime_data.storage_coordinator = storage_coordinator
+    entry.runtime_data.infra_coordinator = infra_coordinator
+
+    add_entities = MagicMock()
+    await async_setup_entry(hass, entry, add_entities)
+
+    all_entities: list = []
+    for call in add_entities.call_args_list:
+        all_entities.extend(call[0][0])
+
+    temp_average_count = sum(
+        1 for e in all_entities if isinstance(e, TemperatureAverageSensor)
+    )
+    system_temp_count = sum(
+        1 for e in all_entities if isinstance(e, SystemTemperatureSensor)
+    )
+    assert temp_average_count == 0
+    assert system_temp_count == 0
+
+
+async def test_asyncsetupentry_no_system_temperature_sensors_when_option_missing(
+    hass,
+) -> None:
+    """Without the option key at all, no system temperature entities are created."""
+    from custom_components.unraid.sensor import async_setup_entry
+
+    temp_metrics = _make_temp_metrics(sensors=[_make_temp_sensor("s1", "CPU")])
+    system_data = make_system_data(temperature=temp_metrics)
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = system_data
+    system_coordinator.last_update_success = True
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+    storage_coordinator.last_update_success = True
+
+    infra_coordinator = MagicMock(spec=UnraidInfraCoordinator)
+    infra_coordinator.data = MagicMock()
+    infra_coordinator.last_update_success = True
+
+    entry = MagicMock()
+    entry.options = {}
+    entry.runtime_data = MagicMock()
+    entry.runtime_data.server_info = {"uuid": "test-uuid", "hostname": "tower"}
+    entry.runtime_data.system_coordinator = system_coordinator
+    entry.runtime_data.storage_coordinator = storage_coordinator
+    entry.runtime_data.infra_coordinator = infra_coordinator
+
+    add_entities = MagicMock()
+    await async_setup_entry(hass, entry, add_entities)
+
+    all_entities: list = []
+    for call in add_entities.call_args_list:
+        all_entities.extend(call[0][0])
+
+    temp_average_count = sum(
+        1 for e in all_entities if isinstance(e, TemperatureAverageSensor)
+    )
+    system_temp_count = sum(
+        1 for e in all_entities if isinstance(e, SystemTemperatureSensor)
+    )
+    assert temp_average_count == 0
+    assert system_temp_count == 0
+
+
+async def test_asyncsetupentry_creates_temperature_sensors_when_enabled_with_data(
+    hass,
+) -> None:
+    """When option is enabled and temperature data exists, temp entities are created."""
+    from custom_components.unraid.sensor import async_setup_entry
+
+    sensors = [
+        _make_temp_sensor("s1", "CPU", temperature=50.0),
+        _make_temp_sensor("s2", "Motherboard", sensor_type=SensorType.MOTHERBOARD),
+    ]
+    temp_metrics = _make_temp_metrics(sensors=sensors)
+    system_data = make_system_data(temperature=temp_metrics)
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = system_data
+    system_coordinator.last_update_success = True
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+    storage_coordinator.last_update_success = True
+
+    infra_coordinator = MagicMock(spec=UnraidInfraCoordinator)
+    infra_coordinator.data = MagicMock()
+    infra_coordinator.last_update_success = True
+
+    entry = _make_config_entry_with_temp_option(enabled=True)
+    entry.runtime_data.system_coordinator = system_coordinator
+    entry.runtime_data.storage_coordinator = storage_coordinator
+    entry.runtime_data.infra_coordinator = infra_coordinator
+
+    add_entities = MagicMock()
+    await async_setup_entry(hass, entry, add_entities)
+
+    all_entities: list = []
+    for call in add_entities.call_args_list:
+        all_entities.extend(call[0][0])
+
+    temp_average_count = sum(
+        1 for e in all_entities if isinstance(e, TemperatureAverageSensor)
+    )
+    system_temp_count = sum(
+        1 for e in all_entities if isinstance(e, SystemTemperatureSensor)
+    )
+    assert temp_average_count == 1
+    assert system_temp_count == 2
+
+
+async def test_asyncsetupentry_no_temperature_sensors_when_enabled_but_no_data(
+    hass,
+) -> None:
+    """When option is enabled but no temperature data returned, no temp entities."""
+    from custom_components.unraid.sensor import async_setup_entry
+
+    system_data = make_system_data(temperature=None)
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = system_data
+    system_coordinator.last_update_success = True
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+    storage_coordinator.last_update_success = True
+
+    infra_coordinator = MagicMock(spec=UnraidInfraCoordinator)
+    infra_coordinator.data = MagicMock()
+    infra_coordinator.last_update_success = True
+
+    entry = _make_config_entry_with_temp_option(enabled=True)
+    entry.runtime_data.system_coordinator = system_coordinator
+    entry.runtime_data.storage_coordinator = storage_coordinator
+    entry.runtime_data.infra_coordinator = infra_coordinator
+
+    add_entities = MagicMock()
+    await async_setup_entry(hass, entry, add_entities)
+
+    all_entities: list = []
+    for call in add_entities.call_args_list:
+        all_entities.extend(call[0][0])
+
+    temp_average_count = sum(
+        1 for e in all_entities if isinstance(e, TemperatureAverageSensor)
+    )
+    system_temp_count = sum(
+        1 for e in all_entities if isinstance(e, SystemTemperatureSensor)
+    )
+    assert temp_average_count == 0
+    assert system_temp_count == 0
+
+
+async def test_asyncsetupentry_temperature_sensors_filter_bogus_channels(
+    hass,
+) -> None:
+    """When enabled, bogus AUXTIN/inX sensors are filtered out of entity creation."""
+    from custom_components.unraid.sensor import async_setup_entry
+
+    sensors = [
+        _make_temp_sensor("cpu", "CPU Temp", temperature=45.0),
+        _make_temp_sensor("auxtin1", "AUXTIN1", temperature=2.5),
+        _make_temp_sensor("in7", "in7", temperature=1.2),
+        _make_temp_sensor("mb", "Motherboard", temperature=40.0),
+    ]
+    temp_metrics = _make_temp_metrics(sensors=sensors)
+    system_data = make_system_data(temperature=temp_metrics)
+
+    system_coordinator = MagicMock(spec=UnraidSystemCoordinator)
+    system_coordinator.data = system_data
+    system_coordinator.last_update_success = True
+
+    storage_coordinator = MagicMock(spec=UnraidStorageCoordinator)
+    storage_coordinator.data = make_storage_data()
+    storage_coordinator.last_update_success = True
+
+    infra_coordinator = MagicMock(spec=UnraidInfraCoordinator)
+    infra_coordinator.data = MagicMock()
+    infra_coordinator.last_update_success = True
+
+    entry = _make_config_entry_with_temp_option(enabled=True)
+    entry.runtime_data.system_coordinator = system_coordinator
+    entry.runtime_data.storage_coordinator = storage_coordinator
+    entry.runtime_data.infra_coordinator = infra_coordinator
+
+    add_entities = MagicMock()
+    await async_setup_entry(hass, entry, add_entities)
+
+    all_entities: list = []
+    for call in add_entities.call_args_list:
+        all_entities.extend(call[0][0])
+
+    temp_average_count = sum(
+        1 for e in all_entities if isinstance(e, TemperatureAverageSensor)
+    )
+    system_temp_count = sum(
+        1 for e in all_entities if isinstance(e, SystemTemperatureSensor)
+    )
+    assert temp_average_count == 1
+    assert system_temp_count == 2
+
+
+async def test_default_enable_temperature_sensors_is_false() -> None:
+    """Verify the default value for the temperature sensor option is False."""
+    assert DEFAULT_ENABLE_TEMPERATURE_SENSORS is False
